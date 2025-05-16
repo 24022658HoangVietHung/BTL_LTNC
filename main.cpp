@@ -91,8 +91,8 @@ public:
     }
 
     void Move() {
-        if (IsKeyDown(KEY_UP)) y -= speed;
-        if (IsKeyDown(KEY_DOWN)) y += speed;
+        if (IsKeyDown(KEY_UP) || IsKeyDown(KEY_W)) y -= speed;
+        if (IsKeyDown(KEY_DOWN) || IsKeyDown(KEY_S)) y += speed;
         LimitMovement();
     }
 };
