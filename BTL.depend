@@ -1,4 +1,5 @@
 # depslib dependency file v1.0
-1746107919 source:d:\demo\btl\main.cpp
+1747322272 source:d:\demo\btl\main.cpp
 	<raylib.h>
+	<cmath>
 

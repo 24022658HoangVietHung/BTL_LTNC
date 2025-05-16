@@ -1,4 +1,5 @@
 #include <raylib.h>
+#include <cmath>
 
 const int screen_width = 1280;
 const int screen_height = 720;
@@ -10,6 +11,14 @@ bool hard_mode = false;
 
 Sound player_scored_sound;
 Sound cpu_scored_sound;
+Music menu_music;
+Music game_music;
+Music end_music;
+
+enum EndAction {
+    EXIT,
+    RESTART
+};
 
 class Ball {
 public:
@@ -33,6 +42,9 @@ public:
 
         if (y - radius <= 0 || y + radius >= screen_height) {
             speed_y *= -1;
+            if (fabs(speed_y) < 2.0f) {
+                speed_y = (speed_y < 0 ? -2.0f : 2.0f);
+            }
         }
 
         if (x - radius <= 0) {
@@ -53,8 +65,12 @@ public:
         y = screen_height / 2;
         int dir_x = GetRandomValue(0, 1) == 0 ? -1 : 1;
         int dir_y = GetRandomValue(0, 1) == 0 ? -1 : 1;
+
         speed_x = 8 * dir_x;
-        speed_y = 8 * dir_y;
+
+        do {
+            speed_y = 8 * dir_y;
+        } while (fabs(speed_y) < 2.0f);
     }
 };
 
@@ -71,7 +87,7 @@ public:
     float speed;
 
     void Draw() {
-        DrawRectangleRounded({x, y, width, height}, 0.8f, 0, RED);
+        DrawRectangleRounded({ x, y, width, height }, 0.8f, 0, RED);
     }
 
     void Move() {
@@ -84,12 +100,11 @@ public:
 class CPU : public Paddle {
 public:
     void AutoMove(float ball_y) {
-        float tracking_speed = hard_mode ? 1.0f : 0.4f;
+        float tracking_speed = hard_mode ? 1.1f : 0.8f;
         float randomness = hard_mode ? 0 : GetRandomValue(-8, 8);
 
         float move_amount = (ball_y - (y + height / 2)) * tracking_speed + randomness;
-
-        float max_speed = hard_mode ? 8.0f : 5.0f;
+        float max_speed = hard_mode ? 10.0f : 8.0f;
         if (move_amount > max_speed) move_amount = max_speed;
         if (move_amount < -max_speed) move_amount = -max_speed;
 
@@ -118,19 +133,27 @@ void InitGame() {
     cpu.y = screen_height / 2 - cpu.height / 2;
     cpu.speed = 10;
 
-    player_scored_sound = LoadSound("scored.mp3");
-    cpu_scored_sound = LoadSound("scored.mp3");
+    player_scored_sound = LoadSound("sounds/scored.mp3");
+    cpu_scored_sound = LoadSound("sounds/scored.mp3");
+
+    SetMusicVolume(game_music, 0.5f);
 }
 
 void HandleCollision() {
-    if (CheckCollisionCircleRec({ball.x, ball.y}, ball.radius, {player.x, player.y, player.width, player.height})) {
+    if (CheckCollisionCircleRec({ ball.x, ball.y }, ball.radius, { player.x, player.y, player.width, player.height })) {
         ball.speed_x *= -1.1f;
         ball.speed_y += (ball.y - (player.y + player.height / 2)) / 10;
+        if (fabs(ball.speed_y) < 2.0f) {
+            ball.speed_y = (ball.speed_y < 0 ? -2.0f : 2.0f);
+        }
     }
 
-    if (CheckCollisionCircleRec({ball.x, ball.y}, ball.radius, {cpu.x, cpu.y, cpu.width, cpu.height})) {
+    if (CheckCollisionCircleRec({ ball.x, ball.y }, ball.radius, { cpu.x, cpu.y, cpu.width, cpu.height })) {
         ball.speed_x *= -1.1f;
         ball.speed_y += (ball.y - (cpu.y + cpu.height / 2)) / 10;
+        if (fabs(ball.speed_y) < 2.0f) {
+            ball.speed_y = (ball.speed_y < 0 ? -2.0f : 2.0f);
+        }
     }
 }
 
@@ -160,28 +183,24 @@ void DrawGame() {
 }
 
 void ShowStartScreen() {
-    InitAudioDevice();
-    Music bgm = LoadMusicStream("nhaccho.mp3");
-    PlayMusicStream(bgm);
+    PlayMusicStream(menu_music);
 
     while (!IsKeyPressed(KEY_ENTER) && !WindowShouldClose()) {
-        UpdateMusicStream(bgm);
+        UpdateMusicStream(menu_music);
         BeginDrawing();
         ClearBackground(BLACK);
         DrawText("PICKLEBALL", screen_width / 2 - MeasureText("PICKLEBALL", 50) / 2, screen_height / 2 - 60, 50, YELLOW);
         DrawText("Press ENTER to Start", screen_width / 2 - MeasureText("Press ENTER to Start", 20) / 2, screen_height / 2 + 20, 20, WHITE);
         EndDrawing();
     }
-
-    StopMusicStream(bgm);
-    UnloadMusicStream(bgm);
 }
 
 void ChooseMode() {
     while (!WindowShouldClose()) {
+        UpdateMusicStream(menu_music);
         BeginDrawing();
         ClearBackground(BLACK);
-        DrawText("CHOOSE MODE", screen_width / 2 - MeasureText("CHOOSE MODE", 40) / 2, screen_height / 2 - 100, 40, YELLOW);
+        DrawText("CHOOSE CPU LEVEL", screen_width / 2 - MeasureText("CHOOSE CPU LEVEL", 40) / 2, screen_height / 2 - 100, 40, YELLOW);
         DrawText("Press E for EASY", screen_width / 2 - MeasureText("Press E for EASY", 20) / 2, screen_height / 2, 20, WHITE);
         DrawText("Press H for HARD", screen_width / 2 - MeasureText("Press H for HARD", 20) / 2, screen_height / 2 + 40, 20, WHITE);
         EndDrawing();
@@ -197,49 +216,86 @@ void ChooseMode() {
     }
 }
 
-void ShowEndScreen(bool player_won) {
+EndAction ShowEndScreen(bool player_won) {
     const char* result = player_won ? "YOU WIN!" : "CPU WINS!";
+    StopMusicStream(game_music);
+    PlayMusicStream(end_music);
 
-    while (!IsKeyPressed(KEY_ENTER) && !WindowShouldClose()) {
+    while (!WindowShouldClose()) {
+        UpdateMusicStream(end_music);
         BeginDrawing();
         ClearBackground(BLACK);
         DrawText(result, screen_width / 2 - MeasureText(result, 50) / 2, screen_height / 2 - 60, 50, YELLOW);
-        DrawText("Press ENTER to Exit", screen_width / 2 - MeasureText("Press ENTER to Exit", 20) / 2, screen_height / 2 + 20, 20, WHITE);
+        DrawText("Press ENTER to Quit", screen_width / 2 - MeasureText("Press ENTER to Quit", 20) / 2, screen_height / 2 + 20, 20, WHITE);
+        DrawText("Press R to Play Again", screen_width / 2 - MeasureText("Press R to Play Again", 20) / 2, screen_height / 2 + 60, 20, WHITE);
         EndDrawing();
+
+        if (IsKeyPressed(KEY_ENTER)) {
+            StopMusicStream(end_music);
+            return EXIT;
+        }
+        if (IsKeyPressed(KEY_R)) {
+            StopMusicStream(end_music);
+            return RESTART;
+        }
     }
+
+    StopMusicStream(end_music);
+    return EXIT;
 }
 
 void UnloadResources() {
     UnloadSound(player_scored_sound);
     UnloadSound(cpu_scored_sound);
+    UnloadMusicStream(menu_music);
+    UnloadMusicStream(game_music);
+    UnloadMusicStream(end_music);
     CloseAudioDevice();
 }
 
 int main() {
     InitWindow(screen_width, screen_height, "Pickleball");
     SetTargetFPS(60);
+    InitAudioDevice();
 
-    ShowStartScreen();
-    ChooseMode();
-    InitGame();
+    menu_music = LoadMusicStream("sounds/nhaccho.mp3");
+    game_music = LoadMusicStream("sounds/nhacnen.mp3");
+    end_music = LoadMusicStream("sounds/endgame.mp3");
 
-    bool game_over = false;
-    bool player_won = false;
+    while (!WindowShouldClose()) {
+        PlayMusicStream(menu_music);
+        ShowStartScreen();
+        ChooseMode();
+        StopMusicStream(menu_music);
 
-    while (!WindowShouldClose() && !game_over) {
-        UpdateGame();
-        DrawGame();
+        InitGame();
+        PlayMusicStream(game_music);
 
-        if (player_score == max_score) {
-            game_over = true;
-            player_won = true;
-        } else if (cpu_score == max_score) {
-            game_over = true;
-            player_won = false;
+        bool game_over = false;
+        bool player_won = false;
+
+        while (!WindowShouldClose() && !game_over) {
+            UpdateMusicStream(game_music);
+            UpdateGame();
+            DrawGame();
+
+            if (player_score == max_score) {
+                game_over = true;
+                player_won = true;
+            } else if (cpu_score == max_score) {
+                game_over = true;
+                player_won = false;
+            }
         }
+
+        EndAction action = ShowEndScreen(player_won);
+
+        if (action == EXIT || WindowShouldClose()) break;
+
+        player_score = 0;
+        cpu_score = 0;
     }
 
-    ShowEndScreen(player_won);
     UnloadResources();
     CloseWindow();
     return 0;
